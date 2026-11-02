@@ -1,0 +1,54 @@
+name: steady
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: steady
+      POSTGRES_USER: steady
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Create .env using scripts/setup.mjs}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U steady -d steady']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  mongo:
+    image: mongo:8.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: steady
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Create .env using scripts/setup.mjs}
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, 'db.adminCommand({ping:1}).ok']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build: .
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      DATABASE_URL: postgresql://steady:${POSTGRES_PASSWORD}@postgres:5432/steady
+      MONGO_URL: mongodb://steady:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+    ports:
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://localhost:3000/api/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+volumes:
+  pgdata:
+  mongodata:

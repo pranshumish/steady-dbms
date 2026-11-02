@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {unionSeconds,dayWindow,activityReport} from '../src/metrics.js';
+import {passwordHash,passwordMatches,hashToken,token} from '../src/security.js';
+test('overlapping devices do not double count total active time',()=>assert.equal(unionSeconds([[0,10000],[5000,15000],[20000,30000]],7000,25000),13));
+test('empty and inverted intervals contribute zero',()=>assert.equal(unionSeconds([[20,10],[0,0]]),0));
+test('local dates account for daylight saving changes',()=>{for(const [date,h] of [['2026-03-08',23],['2026-11-01',25]]){const w=dayWindow(date,'America/New_York');assert.equal((w.end-w.start)/3600000,h)}});
+test('invalid dates are rejected',()=>assert.throws(()=>dayWindow('2026-02-30','UTC')));
+test('report clips intervals at midnight and uses half-open switch boundaries',()=>{const {start,end}=dayWindow('2026-10-29','Asia/Kolkata');const iso=n=>new Date(n).toISOString();const r=activityReport([{type:'interval',start:iso(start-10000),end:iso(start+20000),state:'active',domain:'example.org'},{type:'tab_switch',at:iso(start)},{type:'tab_switch',at:iso(end)}],start,end,'Asia/Kolkata');assert.equal(r.activeSeconds,20);assert.equal(r.tabSwitches,1);assert.equal(r.hours.length,24);assert.equal(r.coverage,null);assert.equal(r.domains[0].seconds,20)});
+test('passwords use random salts and reject incorrect input',async()=>{const a=await passwordHash('a long password'),b=await passwordHash('a long password');assert.notEqual(a,b);assert.equal(await passwordMatches('a long password',a),true);assert.equal(await passwordMatches('wrong',a),false)});
+test('tokens are unpredictable and stored as digests',()=>{const a=token(),b=token();assert.notEqual(a,b);assert.equal(hashToken(a).length,64);assert.notEqual(hashToken(a),a)});
